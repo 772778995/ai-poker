@@ -1,0 +1,88 @@
+# ═══════════════════════════════════════════════════
+#  poker-ai 全局配置
+#  优先级：本文件 < 环境变量 (POKER_AI_*) < 命令行参数
+# ═══════════════════════════════════════════════════
+
+# ── 屏幕捕获 ─────────────────────────────────────────
+capture:
+  monitor_index: 1
+  window_title: "PokerTH"
+  fps_limit: 8
+  regions:                          # 相对坐标 [x1, y1, x2, y2]，范围 0.0–1.0
+    hole_cards:      [0.42, 0.72, 0.58, 0.88]
+    community_cards: [0.28, 0.42, 0.72, 0.58]
+    pot:             [0.44, 0.38, 0.56, 0.44]
+    stack:           [0.44, 0.88, 0.56, 0.94]
+    action_buttons:  [0.30, 0.90, 0.70, 0.98]
+
+# ── 视觉识别 ─────────────────────────────────────────
+vision:
+  yolo_model_path: "data/models/poker_cards.pt"
+  yolo_confidence: 0.75             # 低于此置信度触发 OpenCV 模板匹配 fallback
+  ocr_lang: ["en"]
+  ocr_gpu: false                    # 有 CUDA 时设为 true
+  debug_save_frames: false          # true 时将问题帧保存到 tests/fixtures/
+
+# ── 状态解析 ─────────────────────────────────────────
+state:
+  min_confidence: 0.85              # 低于此值跳过本轮决策
+  max_stale_frames: 5               # 最多使用 N 帧旧状态
+
+# ── 决策引擎 ─────────────────────────────────────────
+engine:
+  monte_carlo_simulations: 10000    # 蒙特卡洛次数，约 20ms
+  preflop_ranges_dir: "data/preflop_ranges"
+  bet_sizes:                        # 可选下注尺度（相对底池）
+    - 0.33
+    - 0.67
+    - 1.00
+    - 2.00                          # 超池押注（特殊场合）
+  min_equity_to_call: 0.30          # 低于此胜率直接弃牌
+  bluff_frequency: 0.25             # 虚张声势触发概率（翻后）
+
+# ── LLM 辅助层 ───────────────────────────────────────
+llm:
+  enabled: false                    # 开关：对手分析 & 复盘报告
+  provider: "zhipuai"               # zhipuai | minimax | moonshot
+  model: "glm-4-flash"
+  api_key: ""                       # 或设置环境变量 POKER_AI_LLM_API_KEY
+  base_url: "https://open.bigmodel.ai/api/paas/v4/"
+  timeout: 10                       # 秒，超时则跳过 LLM 分析
+  use_for:
+    - opponent_summary              # 每 N 手生成对手风格描述
+    - session_report                # 会话结束后生成复盘报告
+  # ⚠️ LLM 不参与实时决策路径，只用于离线分析
+
+# ── 执行控制 ─────────────────────────────────────────
+executor:
+  action_confirm_timeout: 3.0       # 执行后等待 UI 确认的超时（秒）
+  max_retries: 3
+
+# ── 反检测（Stealth）─────────────────────────────────
+stealth:
+  enabled: false                    # ⚠️ 主流程跑通后再开启
+  mouse_backend: "pyautogui"        # pyautogui | pyclick（开启 stealth 后自动切换）
+  timing:
+    simple_decision_mu: 1.2         # 简单决策均值（秒）
+    simple_decision_sigma: 0.4
+    hard_decision_mu: 7.0
+    hard_decision_sigma: 2.5
+    afk_probability: 0.02           # 偶发超长停顿概率
+  session:
+    max_duration_minutes: 180       # 单次会话上限
+    break_duration_minutes: [30, 90]
+    daily_max_hours: 6
+    micro_break_interval: [20, 40]  # 分钟
+    micro_break_duration: [2, 8]    # 分钟
+
+# ── 数据记录 ─────────────────────────────────────────
+analytics:
+  db_path: "data/hands.db"
+  hud_update_interval: 5            # HUD 刷新间隔（手数）
+  export_hh_format: true            # 导出 PokerTracker 兼容格式
+
+# ── 全局 ─────────────────────────────────────────────
+debug: false
+log_level: "INFO"                   # DEBUG | INFO | WARNING | ERROR
+log_file: "logs/poker_ai.log"
+log_rotation: "100 MB"
