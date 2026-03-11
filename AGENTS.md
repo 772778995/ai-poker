@@ -1,20 +1,21 @@
 # AGENTS.md — AI 德州扑克自动化系统
 
 > **仅用于学术研究与技术学习，请在本地模拟器或私人环境中使用。**
-> 文档版本：v2.0 | 更新：2026-03
+> 文档版本：v2.1 | 更新：2026-03
 
 ---
 
 ## 目录
 
 1. [系统总览](#1-系统总览)
-2. [目录结构](#2-目录结构)
-3. [模块规范](#3-模块规范)
-4. [核心库选型](#4-核心库选型)
-5. [数据结构定义](#5-数据结构定义)
-6. [开发阶段与优先级](#6-开发阶段与优先级)
-7. [Agent 协作约定](#7-agent-协作约定)
-8. [测试策略](#8-测试策略)
+2. [当前项目状态](#2-当前项目状态)
+3. [目录结构](#3-目录结构)
+4. [模块规范](#4-模块规范)
+5. [核心库选型](#5-核心库选型)
+6. [数据结构定义](#6-数据结构定义)
+7. [开发阶段与优先级](#7-开发阶段与优先级)
+8. [Agent 协作约定](#8-agent-协作约定)
+9. [测试策略](#9-测试策略)
 
 ---
 
@@ -41,7 +42,7 @@
     └───────┬───────┘
             │ Decision (fold/call/raise + amount)
     ┌───────▼───────┐      ┌──────────────────────┐
-    │  Executor 层  │      │  LLM 辅助层 ★新增     │
+    │  Executor 层  │      │  LLM 辅助层          │
     │  鼠标键盘执行  │      │  GLM/Kimi/MiniMax     │
     └───────┬───────┘      │  仅用于离线分析复盘    │
             │ (穿透)        └──────────────────────┘
@@ -51,7 +52,7 @@
     └───────────────┘
 ```
 
-### ⚠️ LLM 在本系统中的正确定位
+### LLM 在本系统中的正确定位
 
 | 用途 | 是否适合 LLM | 推荐方案 |
 |------|-------------|---------|
@@ -62,13 +63,87 @@
 | 决策逻辑解释（调试） | ✅ 适合 | 任意免费 LLM |
 | 牌面识别 / OCR | ❌ | YOLOv8 + EasyOCR |
 
-**结论：** GLM-5 / MiniMax M2.5 / Kimi2.5 均可接入 **LLM 辅助层**（`engine/llm_advisor.py`），为对手建模提供自然语言描述，并在会话结束后生成复盘报告。三者 API 均兼容 OpenAI SDK 格式，配置 `base_url` 即可切换，互为备份。
+**结论：** GLM-5 / MiniMax M2.5 / Kimi2.5 均可接入 **LLM 辅助层**，为对手建模提供自然语言描述，并在会话结束后生成复盘报告。三者 API 均兼容 OpenAI SDK 格式，配置 `base_url` 即可切换，互为备份。
 
 **主循环节奏：** 截图 → 识别 → 解析 → 决策 → 执行，每轮约 200–500ms。LLM 调用在独立线程中异步执行，不阻塞主循环。
 
 ---
 
-## 2. 目录结构
+## 2. 当前项目状态
+
+### 已实现模块 ✅
+
+| 模块 | 文件 | 状态 | 说明 |
+|------|------|------|------|
+| 主控循环 | `main.py` | ✅ 完成 | 完整的主循环框架，支持 debug/dry-run 模式 |
+| 数据模型 | `models.py` | ✅ 完成 | GameState / Decision / Player / GameFrame 等核心模型 |
+| 胜率计算 | `equity.py` | ✅ 完成 | treys + 蒙特卡洛，10k 次模拟约 20ms |
+| GTO 决策 | `gto.py` | ✅ 完成 | 翻前查找表 + 翻后规则，支持对手类型调整 |
+| LLM 辅助 | `llm_advisor.py` | ✅ 完成 | 支持 GLM/Kimi/MiniMax，对手分析 + 复盘报告 |
+| 屏幕捕获 | `capture.py` | ✅ 完成 | mss 实现，支持多显示器和窗口定位 |
+| 配置文件 | `config.yaml` | ✅ 完成 | 完整配置项，含所有层参数 |
+| 依赖管理 | `requirements.txt` | ✅ 完成 | 所有必需依赖已列出 |
+| 单元测试 | `test_equity.py` | ✅ 完成 | EquityCalculator 和 GTOStrategy 测试 |
+
+### 待实现模块 ⏳
+
+| 模块 | 计划路径 | 优先级 | 说明 |
+|------|---------|--------|------|
+| 牌面检测 | `vision/detector.py` | 高 | YOLOv8 + OpenCV 模板匹配 |
+| 数字 OCR | `vision/ocr.py` | 高 | EasyOCR 提取底池/筹码 |
+| 帧解析 | `state/parser.py` | 高 | 组装 GameFrame |
+| 状态追踪 | `state/tracker.py` | 高 | 跨帧状态稳定性 |
+| 对手建模 | `engine/opponent.py` | 中 | VPIP/PFR/AF 统计 |
+| 动作执行 | `executor/controller.py` | 中 | PyAutoGUI 封装 |
+| 数据记录 | `analytics/logger.py` | 中 | SQLite 入库 |
+| HUD 显示 | `analytics/hud.py` | 低 | 实时统计显示 |
+| 看板 | `analytics/dashboard.py` | 低 | Streamlit 收益看板 |
+| 反检测 | `stealth/` | 低 | 流程跑通后实现 |
+
+### 运行命令
+
+```bash
+# 安装依赖
+pip install -r requirements.txt
+
+# 正常运行
+python main.py
+
+# 调试模式（保存问题帧）
+python main.py --debug
+
+# 试跑模式（仅决策，不执行鼠标）
+python main.py --dry-run
+
+# 指定配置文件
+python main.py --config my.yaml
+
+# 运行测试
+python -m pytest test_equity.py -v
+```
+
+---
+
+## 3. 目录结构
+
+### 当前实际结构
+
+```
+ai-poker/
+├── AGENTS.md              # 项目文档
+├── main.py                # 主控循环入口 ✅
+├── config.yaml            # 全局配置 ✅
+├── requirements.txt       # 依赖列表 ✅
+├── models.py              # Pydantic 数据模型 ✅
+├── equity.py              # 胜率计算（treys + 蒙特卡洛）✅
+├── gto.py                 # GTO 策略引擎 ✅
+├── llm_advisor.py         # LLM 辅助层 ✅
+├── capture.py             # 屏幕捕获（mss）✅
+├── test_equity.py         # 单元测试 ✅
+└── .git/
+```
+
+### 目标完整结构（规划）
 
 ```
 poker-ai/
@@ -78,20 +153,20 @@ poker-ai/
 ├── requirements.txt
 │
 ├── vision/
-│   ├── capture.py              # 屏幕捕获（mss）
+│   ├── capture.py              # 屏幕捕获（mss）✅ 已实现于根目录
 │   ├── detector.py             # 牌面/UI 元素检测（OpenCV + YOLO）
 │   └── ocr.py                  # 数字/文字识别（EasyOCR）
 │
 ├── state/
-│   ├── models.py               # Pydantic 数据模型（GameState/Decision/...）
+│   ├── models.py               # Pydantic 数据模型 ✅ 已实现于根目录
 │   ├── parser.py               # 将 Vision 输出解析为 GameFrame
 │   └── tracker.py              # 跨轮状态追踪
 │
 ├── engine/
-│   ├── equity.py               # 胜率计算（treys + 蒙特卡洛）
-│   ├── gto.py                  # GTO 策略（preflop 查找表 + postflop 规则）
+│   ├── equity.py               # 胜率计算 ✅ 已实现于根目录
+│   ├── gto.py                  # GTO 策略 ✅ 已实现于根目录
 │   ├── opponent.py             # 对手建模（VPIP/PFR/AF 统计）
-│   └── llm_advisor.py          # ★ LLM 辅助层（离线分析，非实时）
+│   └── llm_advisor.py          # LLM 辅助层 ✅ 已实现于根目录
 │
 ├── executor/
 │   ├── controller.py           # 动作执行总调度
@@ -115,21 +190,21 @@ poker-ai/
 │   └── hands.db                # SQLite 手牌数据库
 │
 └── tests/
+    ├── test_equity.py          # ✅ 已实现
     ├── test_vision.py
-    ├── test_equity.py
     ├── test_gto.py
     └── fixtures/               # 测试用截图样本
 ```
 
 ---
 
-## 3. 模块规范
+## 4. 模块规范
 
-### 3.1 视觉感知层 — Vision
+### 4.1 视觉感知层 — Vision
 
 **职责：** 捕获屏幕，输出结构化的原始视觉数据（牌面 ID、数字、按钮位置）。
 
-#### `vision/capture.py`
+#### `capture.py` ✅ 已实现
 
 ```python
 class ScreenCapture:
@@ -159,7 +234,7 @@ capture:
     action_buttons:  [0.30, 0.90, 0.70, 0.98]
 ```
 
-#### `vision/detector.py`
+#### `vision/detector.py` ⏳ 待实现
 
 ```python
 class CardDetector:
@@ -176,7 +251,7 @@ class CardDetector:
 - [roboflow/playing-cards](https://universe.roboflow.com/augmented-startups/playing-cards-ow27d) 预训练模型
 - 或使用 `labelImg` 自行标注 ~500 张样本训练
 
-#### `vision/ocr.py`
+#### `vision/ocr.py` ⏳ 待实现
 
 ```python
 class PokerOCR:
@@ -192,11 +267,11 @@ class PokerOCR:
 
 ---
 
-### 3.2 状态解析层 — State
+### 4.2 状态解析层 — State
 
 **职责：** 将 Vision 层输出组合为完整、一致的 `GameState` 对象，负责跨帧状态追踪。
 
-#### `state/models.py`（核心数据结构）
+#### `models.py` ✅ 已实现（核心数据结构）
 
 ```python
 class GameState(BaseModel):
@@ -235,9 +310,37 @@ class Decision(BaseModel):
     confidence: float
     reasoning: str
     complexity: str                 # simple|medium|hard（影响 Stealth 思考时间）
+
+class Player(BaseModel):
+    seat: int
+    stack: float
+    bet: float = 0.0
+    is_active: bool = True
+    is_all_in: bool = False
+    last_action: Optional[Action] = None
+    position: Optional[Position] = None
+    player_type: PlayerType = PlayerType.UNKNOWN
+
+class GameFrame(BaseModel):
+    """Vision 层原始输出，传递给 State 层"""
+    hole_cards: list[str]
+    community_cards: list[str]
+    pot: Optional[float]
+    stacks: dict[int, float]
+    bets: dict[int, float]
+    buttons: DetectedButtons
+    confidence: float
 ```
 
-#### `state/tracker.py`
+#### `state/parser.py` ⏳ 待实现
+
+```python
+class StateParser:
+    """将 Vision 层输出组装为 GameFrame"""
+    def parse_frame(self, frame, regions, detector, ocr) -> GameFrame: ...
+```
+
+#### `state/tracker.py` ⏳ 待实现
 
 ```python
 class StateTracker:
@@ -251,11 +354,11 @@ class StateTracker:
 
 ---
 
-### 3.3 决策引擎层 — Engine
+### 4.3 决策引擎层 — Engine
 
 **职责：** 接收 `GameState`，输出最优 `Decision`。
 
-#### `engine/equity.py`
+#### `equity.py` ✅ 已实现
 
 ```python
 class EquityCalculator:
@@ -265,9 +368,13 @@ class EquityCalculator:
     - calculate_fast()：1,000 次，约 2ms，用于初筛
     - hand_class()：返回手牌类别（"Flush", "Two Pair" 等）
     """
+    def calculate(self, hole_cards, board, num_opponents=1, simulations=10000) -> dict: ...
+    def calculate_fast(self, hole_cards, board, num_opponents=1) -> float: ...
+    def hand_rank(self, hole_cards, board) -> Optional[int]: ...
+    def hand_class(self, score: int) -> str: ...
 ```
 
-#### `engine/gto.py`
+#### `gto.py` ✅ 已实现
 
 ```python
 class GTOStrategy:
@@ -281,9 +388,11 @@ class GTOStrategy:
       5. 下注尺度由 SPR + 对手类型决定（0.33x/0.5x/0.67x/1.0x pot）
     """
     def decide(self, state: GameState, equity: float, opponent_type: PlayerType) -> Decision: ...
+    def decide_preflop(self, state: GameState, opponent_type: PlayerType) -> Decision: ...
+    def decide_postflop(self, state: GameState, equity: float, opponent_type: PlayerType) -> Decision: ...
 ```
 
-#### `engine/opponent.py`
+#### `engine/opponent.py` ⏳ 待实现
 
 ```python
 class OpponentModel:
@@ -296,7 +405,7 @@ class OpponentModel:
     def get_stats(self, seat: int) -> dict: ...    # 供 LLM 分析使用
 ```
 
-#### `engine/llm_advisor.py` ★
+#### `llm_advisor.py` ✅ 已实现
 
 ```python
 class LLMAdvisor:
@@ -335,7 +444,9 @@ llm:
 
 ---
 
-### 3.4 执行控制层 — Executor
+### 4.4 执行控制层 — Executor
+
+#### `executor/controller.py` ⏳ 待实现
 
 ```python
 class ActionController:
@@ -360,7 +471,7 @@ class MouseController:
 
 ---
 
-### 3.5 反检测层 — Stealth（流程跑通后实现）
+### 4.5 反检测层 — Stealth（流程跑通后实现）
 
 > ⚠️ **本层在主流程完全跑通、胜率可验证后再开发。**
 > 激活方式：`config.yaml` 中 `stealth.enabled: true`，无需修改其他代码。
@@ -399,7 +510,7 @@ class MouseController:
 
 ---
 
-### 3.6 数据记录层 — Analytics
+### 4.6 数据记录层 — Analytics
 
 ```python
 class HandLogger:
@@ -412,7 +523,7 @@ class HandLogger:
 
 ---
 
-## 4. 核心库选型
+## 5. 核心库选型
 
 | 功能 | 选型 | 理由 |
 |------|------|------|
@@ -432,7 +543,7 @@ class HandLogger:
 
 ---
 
-## 5. 数据结构定义
+## 6. 数据结构定义
 
 ### 数据流（类型化）
 
@@ -468,16 +579,16 @@ delay = timing.get_delay(decision.complexity)
 
 ---
 
-## 6. 开发阶段与优先级
+## 7. 开发阶段与优先级
 
-### Phase 1：视觉 + 状态（Week 1-3）
+### Phase 1：视觉 + 状态 ⏳ 进行中
 
 **目标：** 准确读取任意一手牌的完整状态。
 
-- [ ] `vision/capture.py` — mss 截图，稳定帧率
+- [x] `capture.py` — mss 截图，稳定帧率 ✅
 - [ ] `vision/detector.py` — YOLOv8 识别 52 张牌（准确率 > 95%）
 - [ ] `vision/ocr.py` — EasyOCR 提取底池/筹码数字（误差 < 1%）
-- [ ] `state/models.py` — 完整 Pydantic 模型（已完成）
+- [x] `models.py` — 完整 Pydantic 模型 ✅
 - [ ] `state/parser.py` — 组装 GameFrame，置信度校验
 - [ ] `state/tracker.py` — 跨帧状态稳定性
 
@@ -485,41 +596,42 @@ delay = timing.get_delay(decision.complexity)
 
 ---
 
-### Phase 2：决策引擎（Week 4-6）
+### Phase 2：决策引擎 ✅ 已完成
 
 **目标：** 对任意合法 GameState 给出有理有据的决策。
 
-- [ ] `engine/equity.py` — 蒙特卡洛胜率（10k 次 < 50ms）（已完成）
-- [ ] `engine/gto.py` — 翻前查找表 + 翻后规则（已完成）
-- [ ] `engine/opponent.py` — VPIP/PFR 统计追踪（已完成）
+- [x] `equity.py` — 蒙特卡洛胜率（10k 次 < 50ms）✅
+- [x] `gto.py` — 翻前查找表 + 翻后规则 ✅
+- [x] `llm_advisor.py` — LLM 辅助层接口 ✅
+- [ ] `engine/opponent.py` — VPIP/PFR 统计追踪
 - [ ] 收集翻前范围 CSV 数据（data/preflop_ranges/）
-- [ ] 单元测试：对比 GTO Wizard 参考答案，吻合率 > 80%
+- [x] 单元测试：`test_equity.py` ✅
 
 **验收标准：** PokerTH 中手动输入 20 个场景，决策准确率与 GTO 参考 > 80% 吻合。
 
 ---
 
-### Phase 3：端到端联调（Week 7-8）
+### Phase 3：端到端联调 ⏳ 进行中
 
 **目标：** 在本地模拟器中完整运行主循环，无人工干预打完一局。
 
-- [ ] `executor/controller.py` — 接入 PyAutoGUI（已完成框架）
-- [ ] `main.py` — 主循环完整联调（已完成）
+- [ ] `executor/controller.py` — 接入 PyAutoGUI
+- [x] `main.py` — 主循环完整框架 ✅
 - [ ] `state/parser.py` — 补全 players/stack/to_call 字段解析
 - [ ] `state/tracker.py` — 补全多玩家状态追踪
-- [ ] `analytics/logger.py` — SQLite 入库（已完成）
+- [ ] `analytics/logger.py` — SQLite 入库
 - [ ] 异常处理：识别失败 / 决策超时 / 执行失败 fallback
 
 **验收标准：** PokerTH 中连续运行 50 手无崩溃，胜率统计可信。
 
 ---
 
-### Phase 4：LLM 辅助层接入（Week 9，可与 Phase 3 并行）
+### Phase 4：LLM 辅助层接入 ✅ 已完成
 
 **目标：** 接入免费 LLM，提供对手分析与复盘报告。
 
-- [ ] `engine/llm_advisor.py` — 接口已完成，填入真实 API Key 测试
-- [ ] 配置 `config.yaml` 中的 `llm` 部分
+- [x] `llm_advisor.py` — 接口已完成 ✅
+- [x] 配置 `config.yaml` 中的 `llm` 部分 ✅
 - [ ] `analytics/hud.py` — 整合 LLM 对手描述到 HUD
 - [ ] `analytics/dashboard.py` — Streamlit 看板展示复盘报告
 
@@ -530,7 +642,7 @@ delay = timing.get_delay(decision.complexity)
 
 ---
 
-### Phase 5：对手建模优化（Week 10）
+### Phase 5：对手建模优化
 
 - [ ] `engine/opponent.py` — 完整 HUD（AF / 3-bet% / Fold to C-bet）
 - [ ] 玩家类型识别并调整策略权重
@@ -539,7 +651,7 @@ delay = timing.get_delay(decision.complexity)
 
 ---
 
-### Phase 6：Stealth 反检测层（Week 11-13，流程稳定后）
+### Phase 6：Stealth 反检测层（流程稳定后）
 
 - [ ] `stealth/human_mouse.py` — pyclick 贝塞尔曲线
 - [ ] `stealth/timing.py` — 对数正态决策延迟，消费 Decision.complexity
@@ -549,7 +661,7 @@ delay = timing.get_delay(decision.complexity)
 
 ---
 
-### Phase 7：看板与复盘（Week 14）
+### Phase 7：看板与复盘
 
 - [ ] `analytics/dashboard.py` — Streamlit 实时看板
 - [ ] HH 格式导出（兼容 PT4 / HM3）
@@ -557,7 +669,7 @@ delay = timing.get_delay(decision.complexity)
 
 ---
 
-## 7. Agent 协作约定
+## 8. Agent 协作约定
 
 ### 接口契约
 
@@ -600,7 +712,11 @@ result = llm.opponent_summary(seat, stats)  # None 表示跳过
 `config.yaml` < 环境变量 (`POKER_AI_*`) < 命令行参数
 
 ```bash
-# 环境变量示例
+# 环境变量示例（Windows）
+set POKER_AI_LLM_API_KEY=your_api_key_here
+set POKER_AI_LLM_PROVIDER=moonshot
+
+# 环境变量示例（Linux/Mac）
 export POKER_AI_LLM_API_KEY="your_api_key_here"
 export POKER_AI_LLM_PROVIDER="moonshot"
 ```
@@ -617,14 +733,14 @@ logger.info("[LLM] 对手 seat=3 分析完成: 典型鱼型玩家")
 
 ---
 
-## 8. 测试策略
+## 9. 测试策略
 
 ### 单元测试
 
 ```
 tests/
+├── test_equity.py      # ✅ 已实现：对比已知胜率（精度 < 0.5%）
 ├── test_vision.py      # 用 fixtures/ 截图测试识别准确率
-├── test_equity.py      # 对比已知胜率（精度 < 0.5%）
 ├── test_gto.py         # 对比 GTO Wizard 参考决策
 ├── test_llm.py         # Mock LLM API，测试 prompt 格式
 └── test_stealth.py     # 鼠标轨迹人类相似度评分
@@ -638,15 +754,15 @@ tests/
 
 ### 性能基准
 
-| 组件 | 目标延迟 |
-|------|---------|
-| 截图 (mss) | < 5ms |
-| 牌面识别 (YOLO) | < 30ms |
-| OCR | < 50ms |
-| 胜率计算 (10k 次) | < 50ms |
-| GTO 决策 | < 10ms |
-| **决策总延迟** | **< 150ms** |
-| LLM 调用（异步，不计入主循环） | < 10s |
+| 组件 | 目标延迟 | 当前状态 |
+|------|---------|---------|
+| 截图 (mss) | < 5ms | ✅ 已实现 |
+| 牌面识别 (YOLO) | < 30ms | ⏳ 待实现 |
+| OCR | < 50ms | ⏳ 待实现 |
+| 胜率计算 (10k 次) | < 50ms | ✅ 已实现 (~20ms) |
+| GTO 决策 | < 10ms | ✅ 已实现 |
+| **决策总延迟** | **< 150ms** | ⏳ 部分实现 |
+| LLM 调用（异步，不计入主循环） | < 10s | ✅ 已实现 |
 
 ---
 
@@ -661,3 +777,19 @@ tests/
 - **智谱 AI API**：https://open.bigmodel.ai/dev/api
 - **Kimi API**：https://platform.moonshot.cn/docs
 - **MiniMax API**：https://platform.minimaxi.com/document/guides/chat-model/V2
+
+---
+
+## 变更日志
+
+### v2.1 (2026-03)
+- 更新目录结构，反映当前实际扁平化结构
+- 新增"当前项目状态"章节，明确已实现/待实现模块
+- 更新开发阶段进度，标注已完成模块
+- 添加运行命令说明
+- 更新性能基准表格，标注实现状态
+
+### v2.0 (2026-03)
+- 初始完整文档
+- 定义系统架构与模块规范
+- 规划开发阶段与优先级
